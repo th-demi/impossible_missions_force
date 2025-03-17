@@ -1,0 +1,40 @@
+# Node.js
+node_modules/
+.pnp/
+.pnp.js
+
+# Next.js specific
+.next/
+/out/
+# .gitignore
+
+# Build directories for backend or frontend
+/build
+
+# Testing coverage
+/coverage/
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment variable files (opt-in if necessary)
+.env*
+!.env.example
+
+# macOS specific
+.DS_Store
+
+# Vercel deployment settings
+.vercel/
+
+# TypeScript build information (for frontend if using TS)
+*.tsbuildinfo
+next-env.d.ts
+
+# Ignore package lock files if you're using Yarn or pnpm
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

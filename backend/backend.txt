@@ -1,0 +1,838 @@
+===== server.js =====
+require('dotenv').config();  // Load environment variables
+const express = require('express'); // Express framework
+const cors = require('cors'); // CORS middleware
+const app = require('./src/app'); // Import your app (e.g., routes)
+
+const PORT = process.env.PORT || 3000;
+
+const corsOptions = {
+  origin: '*',  // Allow all origins
+  methods: 'GET,POST,PUT,DELETE',  // Allowed HTTP methods
+  allowedHeaders: 'Content-Type,Authorization',  // Allowed headers
+  credentials: true,  // Allow sending cookies and credentials if needed
+};
+
+app.use(cors(corsOptions));
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`IMF Gadget API server running on port ${PORT}`);
+  console.log('This message will self-destruct in 5 seconds...');
+});
+
+
+
+src/
+src//middleware
+src//config
+src//utils
+src//models
+src//scripts
+src//controllers
+src//routes
+===== src//middleware/auth.js =====
+const jwt = require('jsonwebtoken');
+const { jwtSecret } = require('../config/auth');
+const { errorResponse } = require('../utils/responseFormatter');
+const User = require('../models/User');
+
+/**
+ * Middleware to authenticate JWT tokens
+ */
+const authenticate = async (req, res, next) => {
+  try {
+    // Get token from header
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json(errorResponse('Access denied. No token provided.', 401));
+    }
+    
+    const token = authHeader.split(' ')[1];
+    
+    // Verify token
+    const decoded = jwt.verify(token, jwtSecret);
+    
+    // Find user by ID
+    const user = await User.findByPk(decoded.id);
+    
+    if (!user) {
+      return res.status(401).json(errorResponse('Invalid token. User not found.', 401));
+    }
+    
+    // Add user to request object
+    req.user = {
+      id: user.id,
+      username: user.username,
+      role: user.role
+    };
+    
+    next();
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json(errorResponse('Token expired', 401));
+    }
+    
+    return res.status(401).json(errorResponse('Invalid token', 401));
+  }
+};
+
+/**
+ * Middleware to authorize admin users
+ */
+const authorize = (roles = ['admin']) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json(errorResponse('Unauthorized. Please authenticate.', 401));
+    }
+    
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json(errorResponse('Forbidden. Insufficient permissions.', 403));
+    }
+    
+    next();
+  };
+};
+
+module.exports = {
+  authenticate,
+  authorize
+};
+
+
+===== src//middleware/errorHandler.js =====
+const { errorResponse } = require('../utils/responseFormatter');
+
+/**
+ * Global error handling middleware
+ */
+const errorHandler = (err, req, res, next) => {
+  console.error('Error:', err);
+  
+  if (err.name === 'SequelizeValidationError' || err.name === 'SequelizeUniqueConstraintError') {
+    const errors = err.errors.map(e => e.message);
+    return res.status(400).json(errorResponse(`Validation Error: ${errors.join(', ')}`, 400));
+  }
+
+  if (err.name === 'SequelizeDatabaseError') {
+    return res.status(500).json(errorResponse('Database Error: ' + err.message, 500));
+  }
+  
+  // Default error response
+  return res.status(500).json(errorResponse(err.message || 'Internal Server Error', 500));
+};
+
+module.exports = errorHandler;
+
+
+===== src//config/database.js =====
+const { Sequelize } = require('sequelize');
+require('dotenv').config();
+
+const sequelize = new Sequelize(process.env.DATABASE_URL, {
+  dialect: 'postgres',
+  dialectOptions: {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false
+    }
+  },
+  logging: false
+});
+
+const testConnection = async () => {
+  try {
+    await sequelize.authenticate();
+    console.log('Database connection established successfully.');
+  } catch (error) {
+    console.error('Unable to connect to the database:', error);
+    process.exit(1);
+  }
+};
+
+testConnection();
+
+module.exports = { sequelize };
+
+
+===== src//config/auth.js =====
+require('dotenv').config();
+
+module.exports = {
+  jwtSecret: process.env.JWT_SECRET,
+  jwtExpiration: '24h'
+};
+
+
+===== src//utils/codeGenerator.js =====
+const adjectives = [
+    'Silent', 'Midnight', 'Phantom', 'Shadow', 'Ghost', 'Covert', 'Stealth', 'Rogue',
+    'Invisible', 'Quantum', 'Crystal', 'Mystic', 'Sonic', 'Viper', 'Cobra', 'Eagle',
+    'Arctic', 'Desert', 'Jungle', 'Urban', 'Cyber', 'Digital', 'Analog', 'Tactical',
+    'Supreme', 'Ultimate', 'Extreme', 'Maximum', 'Nano', 'Micro', 'Mega', 'Ultra'
+  ];
+  
+  const nouns = [
+    'Nightingale', 'Kraken', 'Phoenix', 'Dragon', 'Tiger', 'Panther', 'Falcon', 'Wolf',
+    'Sentinel', 'Guardian', 'Protector', 'Defender', 'Ghost', 'Specter', 'Shadow', 'Phantom',
+    'Blade', 'Dagger', 'Sword', 'Shield', 'Arrow', 'Dart', 'Bullet', 'Missile',
+    'Eagle', 'Hawk', 'Owl', 'Raven', 'Serpent', 'Viper', 'Cobra', 'Scorpion'
+  ];
+  
+  /**
+   * Generate a random gadget codename
+   * @returns {string} A random codename in the format "The {Adjective} {Noun}"
+   */
+  const generateCodename = () => {
+    const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const noun = nouns[Math.floor(Math.random() * nouns.length)];
+    return `The ${adjective} ${noun}`;
+  };
+  
+  /**
+   * Generate a random mission success probability
+   * @returns {number} A random probability between 50 and 99
+   */
+  const generateSuccessProbability = () => {
+    return Math.floor(Math.random() * 50) + 50; // Random number between 50-99
+  };
+  
+  /**
+   * Generate a self-destruct confirmation code
+   * @returns {string} A 6-character alphanumeric code
+   */
+  const generateSelfDestructCode = () => {
+    const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Omitting similar-looking characters
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    return code;
+  };
+  
+  module.exports = {
+    generateCodename,
+    generateSuccessProbability,
+    generateSelfDestructCode
+  };
+
+
+===== src//utils/responseFormatter.js =====
+/**
+ * Format a success response
+ * @param {*} data The data to include in the response
+ * @param {string} message Success message
+ * @returns {Object} Formatted response object
+ */
+const successResponse = (data, message = 'Operation successful') => {
+    return {
+      success: true,
+      message,
+      data
+    };
+  };
+  
+  /**
+   * Format an error response
+   * @param {string} message Error message
+   * @param {number} statusCode HTTP status code
+   * @returns {Object} Formatted error object
+   */
+  const errorResponse = (message, statusCode = 500) => {
+    return {
+      success: false,
+      message,
+      statusCode
+    };
+  };
+  
+  module.exports = {
+    successResponse,
+    errorResponse
+  };
+
+
+===== src//models/user.js =====
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/database');
+const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
+
+const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: () => uuidv4(),
+    primaryKey: true
+  },
+  username: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true
+  },
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  role: {
+    type: DataTypes.ENUM('agent', 'admin'),
+    defaultValue: 'agent'
+  }
+}, {
+  timestamps: true,
+  hooks: {
+    beforeCreate: async (user) => {
+      if (user.password) {
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(user.password, salt);
+      }
+    },
+    beforeUpdate: async (user) => {
+      if (user.changed('password')) {
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(user.password, salt);
+      }
+    }
+  }
+});
+
+User.prototype.comparePassword = async function(password) {
+  return await bcrypt.compare(password, this.password);
+};
+
+module.exports = User;
+
+
+===== src//models/gadget.js =====
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/database');
+const { v4: uuidv4 } = require('uuid');
+
+const Gadget = sequelize.define('Gadget', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: () => uuidv4(),
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  codename: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true
+  },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  status: {
+    type: DataTypes.ENUM('Available', 'Deployed', 'Destroyed', 'Decommissioned'),
+    defaultValue: 'Available'
+  },
+  decommissionedAt: {
+    type: DataTypes.DATE,
+    allowNull: true
+  }
+}, {
+  timestamps: true
+});
+
+module.exports = Gadget;
+
+
+===== src//scripts/initDatabase.js =====
+require('dotenv').config();
+const User = require('../models/User');
+const Gadget = require('../models/Gadget');
+const { sequelize } = require('../config/database');
+const { generateCodename } = require('../utils/codeGenerator');
+
+const initDatabase = async () => {
+  try {
+    // Sync database (create tables)
+    await sequelize.sync({ force: true });
+    console.log('Database synchronized');
+    
+    // Create default admin user
+    const admin = await User.create({
+      username: 'admin',
+      password: 'IMF-admin-2025!',
+      role: 'admin'
+    });
+    console.log('Admin user created:', admin.username);
+    
+    // Create default agent user
+    const agent = await User.create({
+      username: 'agent',
+      password: 'IMF-agent-2025!',
+      role: 'agent'
+    });
+    console.log('Agent user created:', agent.username);
+    
+    // Create sample gadgets
+    const gadgets = [
+      {
+        name: 'Laser Watch',
+        description: 'Watch with built-in high-powered laser',
+        codename: generateCodename(),
+        status: 'Available'
+      },
+      {
+        name: 'Explosive Pen',
+        description: 'Pen that doubles as a small explosive device',
+        codename: generateCodename(),
+        status: 'Deployed'
+      },
+      {
+        name: 'Grappling Hook',
+        description: 'Compact grappling hook for scaling buildings',
+        codename: generateCodename(),
+        status: 'Available'
+      }
+    ];
+    
+    for (const gadget of gadgets) {
+      await Gadget.create(gadget);
+    }
+    console.log('Sample gadgets created');
+    
+    console.log('Database initialization completed successfully');
+    process.exit(0);
+  } catch (error) {
+    console.error('Database initialization failed:', error);
+    process.exit(1);
+  }
+};
+
+initDatabase();
+
+
+===== src//controllers/gadgetController.js =====
+const Gadget = require('../models/Gadget');
+const { 
+  generateCodename, 
+  generateSuccessProbability, 
+  generateSelfDestructCode 
+} = require('../utils/codeGenerator');
+const { successResponse, errorResponse } = require('../utils/responseFormatter');
+const { Op } = require('sequelize');
+
+/**
+ * Get all gadgets with optional status filter
+ */
+const getAllGadgets = async (req, res, next) => {
+  try {
+    const { status } = req.query;
+    const filter = status ? { status } : {};
+    
+    let gadgets = await Gadget.findAll({ 
+      where: filter,
+      order: [['createdAt', 'DESC']]
+    });
+    
+    // Add mission success probability to each gadget
+    gadgets = gadgets.map(gadget => {
+      const gadgetJson = gadget.toJSON();
+      const probability = generateSuccessProbability();
+      
+      return {
+        ...gadgetJson,
+        successProbability: probability,
+        statusDisplay: `${gadget.codename} - ${probability}% success probability`
+      };
+    });
+    
+    return res.json(successResponse(gadgets, 'Gadgets retrieved successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get a specific gadget by ID
+ */
+const getGadgetById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    const gadget = await Gadget.findByPk(id);
+    
+    if (!gadget) {
+      return res.status(404).json(errorResponse('Gadget not found', 404));
+    }
+    
+    const gadgetJson = gadget.toJSON();
+    const probability = generateSuccessProbability();
+    
+    return res.json(successResponse({
+      ...gadgetJson,
+      successProbability: probability,
+      statusDisplay: `${gadget.codename} - ${probability}% success probability`
+    }));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Create a new gadget
+ */
+const createGadget = async (req, res, next) => {
+  try {
+    const { name, description } = req.body;
+    
+    // Validate input
+    if (!name) {
+      return res.status(400).json(errorResponse('Gadget name is required', 400));
+    }
+    
+    // Generate unique codename
+    let codename;
+    let isUnique = false;
+    
+    while (!isUnique) {
+      codename = generateCodename();
+      // Check if codename already exists
+      const existing = await Gadget.findOne({ where: { codename } });
+      if (!existing) {
+        isUnique = true;
+      }
+    }
+    
+    // Create new gadget
+    const gadget = await Gadget.create({
+      name,
+      codename,
+      description,
+      status: 'Available'
+    });
+    
+    return res.status(201).json(successResponse(gadget, 'Gadget created successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Update an existing gadget
+ */
+const updateGadget = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, description, status } = req.body;
+    
+    // Find gadget
+    const gadget = await Gadget.findByPk(id);
+    
+    if (!gadget) {
+      return res.status(404).json(errorResponse('Gadget not found', 404));
+    }
+    
+    // Validate status if provided
+    if (status && !['Available', 'Deployed', 'Destroyed', 'Decommissioned'].includes(status)) {
+      return res.status(400).json(errorResponse('Invalid status value', 400));
+    }
+    
+    // Update gadget
+    await gadget.update({
+      name: name || gadget.name,
+      description: description !== undefined ? description : gadget.description,
+      status: status || gadget.status
+    });
+    
+    return res.json(successResponse(gadget, 'Gadget updated successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Delete a gadget (mark as decommissioned)
+ */
+const deleteGadget = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    // Find gadget
+    const gadget = await Gadget.findByPk(id);
+    
+    if (!gadget) {
+      return res.status(404).json(errorResponse('Gadget not found', 404));
+    }
+    
+    // Mark as decommissioned instead of deleting
+    await gadget.update({
+      status: 'Decommissioned',
+      decommissionedAt: new Date()
+    });
+    
+    return res.json(successResponse(
+      { id: gadget.id, status: gadget.status, decommissionedAt: gadget.decommissionedAt },
+      'Gadget decommissioned successfully'
+    ));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Trigger self-destruct for a specific gadget
+ */
+const selfDestructGadget = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { confirmationCode } = req.body;
+    
+    // Find gadget
+    const gadget = await Gadget.findByPk(id);
+    
+    if (!gadget) {
+      return res.status(404).json(errorResponse('Gadget not found', 404));
+    }
+    
+    // Check if gadget is already destroyed or decommissioned
+    if (['Destroyed', 'Decommissioned'].includes(gadget.status)) {
+      return res.status(400).json(
+        errorResponse(`Gadget cannot be destroyed. Current status: ${gadget.status}`, 400)
+      );
+    }
+    
+    // Generate expected confirmation code (in a real app, this would be sent to the user)
+    const expectedCode = generateSelfDestructCode();
+    
+    // In a real app, we would check if the provided code matches the expected one
+    // For this exercise, we'll simulate a successful confirmation
+    // if (confirmationCode !== expectedCode) {
+    //   return res.status(400).json(errorResponse('Invalid confirmation code', 400));
+    // }
+    
+    // Update gadget status to Destroyed
+    await gadget.update({
+      status: 'Destroyed'
+    });
+    
+    return res.json(successResponse({
+      id: gadget.id,
+      codename: gadget.codename,
+      status: gadget.status,
+      message: `${gadget.codename} has been successfully destroyed.`,
+      confirmationCode: expectedCode // In a real app, this would be sent separately
+    }, 'Self-destruct sequence completed'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {
+  getAllGadgets,
+  getGadgetById,
+  createGadget,
+  updateGadget,
+  deleteGadget,
+  selfDestructGadget
+};
+
+
+===== src//controllers/authController.js =====
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+const { jwtSecret, jwtExpiration } = require('../config/auth');
+const { successResponse, errorResponse } = require('../utils/responseFormatter');
+
+/**
+ * Register a new user (without JWT generation)
+ */
+const register = async (req, res, next) => {
+  try {
+    const { username, password, role } = req.body;
+    
+    // Check if user already exists
+    const existingUser = await User.findOne({ where: { username } });
+    if (existingUser) {
+      return res.status(400).json(errorResponse('Username already taken', 400));
+    }
+    
+    // Create new user
+    const user = await User.create({
+      username,
+      password,
+      role: role || 'agent' // Default to agent role if no role is provided
+    });
+    
+    // Respond with user details (without JWT)
+    return res.status(201).json(successResponse({
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role
+      }
+    }, 'User registered successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Login user (generate JWT on successful login)
+ */
+const login = async (req, res, next) => {
+  try {
+    const { username, password } = req.body;
+    
+    // Find user by username
+    const user = await User.findOne({ where: { username } });
+    if (!user) {
+      return res.status(401).json(errorResponse('Invalid credentials', 401));
+    }
+    
+    // Verify the provided password
+    const isPasswordValid = await user.comparePassword(password);
+    if (!isPasswordValid) {
+      return res.status(401).json(errorResponse('Invalid credentials', 401));
+    }
+    
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user.id, username: user.username, role: user.role },
+      jwtSecret,
+      { expiresIn: jwtExpiration }
+    );
+    
+    // Respond with user details and JWT token
+    return res.json(successResponse({
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role
+      },
+      token
+    }, 'Login successful'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get current user profile (protected route)
+ */
+const getProfile = async (req, res, next) => {
+  try {
+    // User already available in req.user from auth middleware
+    return res.json(successResponse({
+      user: req.user
+    }, 'Profile retrieved successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {
+  register,
+  login,
+  getProfile
+};
+
+
+
+===== src//routes/gadgets.js =====
+const express = require('express');
+const { 
+  getAllGadgets, 
+  getGadgetById, 
+  createGadget, 
+  updateGadget, 
+  deleteGadget,
+  selfDestructGadget
+} = require('../controllers/gadgetController');
+const { authenticate, authorize } = require('../middleware/auth');
+
+const router = express.Router();
+
+// Apply authentication middleware to all gadget routes
+router.use(authenticate);
+
+// Get all gadgets (with optional status filter)
+router.get('/', getAllGadgets);
+
+// Get a specific gadget
+router.get('/:id', getGadgetById);
+
+// Create a new gadget
+router.post('/', authorize(['admin']), createGadget);
+
+// Update a gadget
+router.patch('/:id', authorize(['admin']), updateGadget);
+
+// Delete a gadget (mark as decommissioned)
+router.delete('/:id', authorize(['admin']), deleteGadget);
+
+// Self-destruct a gadget
+router.post('/:id/self-destruct', authorize(['admin']), selfDestructGadget);
+
+module.exports = router;
+
+
+===== src//routes/auth.js =====
+const express = require('express');
+const { register, login, getProfile } = require('../controllers/authController');
+const { authenticate } = require('../middleware/auth');
+
+const router = express.Router();
+
+// Public routes
+router.post('/register', register);
+router.post('/login', login);
+
+// Protected routes
+router.get('/profile', authenticate, getProfile);
+
+module.exports = router;
+
+
+===== src//app.js =====
+const express = require('express');
+const cors = require('cors');
+const { sequelize } = require('./config/database');
+const gadgetRoutes = require('./routes/gadgets');
+const authRoutes = require('./routes/auth');
+const errorHandler = require('./middleware/errorHandler');
+
+const app = express();
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/gadgets', gadgetRoutes);
+
+// Welcome route
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Welcome to the IMF Gadget API',
+    status: 'Mission Active'
+  });
+});
+
+// Error handling middleware
+app.use(errorHandler);
+
+// Initialize database
+const initDatabase = async () => {
+  try {
+    await sequelize.sync();
+    console.log('Database synchronized successfully');
+  } catch (error) {
+    console.error('Database synchronization failed:', error);
+    process.exit(1);
+  }
+};
+
+initDatabase();
+
+module.exports = app;
+
+
